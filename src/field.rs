@@ -1,44 +1,91 @@
-use crate::r#type::Type;
+use std::fmt::{self, Write};
+
+use crate::attributes::Attributes;
+use crate::docs::Docs;
+use crate::formatter::Formatter;
+use crate::vis::Vis;
+
+use crate::type_def::Type;
+
+use crate::impl_macros::{
+    impl_attr_methods,
+    impl_doc_methods,
+    impl_ty_methods,
+    impl_vis_methods,
+};
 
 /// Defines a struct field.
 #[derive(Debug, Clone)]
 pub struct Field {
     /// Field name
-    pub name: String,
-
+    name: Option<String>,
     /// Field type
-    pub ty: Type,
-
+    ty: Type,
     /// Field documentation
-    pub documentation: Vec<String>,
+    docs: Docs,
+    /// Field attrs
+    attrs: Attributes,
+    /// field visibility
+    vis: Vis,
 
-    /// Field annotation
-    pub annotation: Vec<String>,
 }
 
 impl Field {
     /// Return a field definition with the provided name and type
-    pub fn new<T>(name: &str, ty: T) -> Self
+    pub fn new_named<S, T>(name: S, ty: T) -> Self
     where
+        S: AsRef<str>,
         T: Into<Type>,
     {
-        Field {
-            name: name.into(),
+        Self {
+            name: Some(name.as_ref().to_owned()),
             ty: ty.into(),
-            documentation: Vec::new(),
-            annotation: Vec::new(),
+            docs: Docs::default(),
+            attrs: Attributes::default(),
+            vis: Vis::Private,
         }
     }
 
-    /// Set field's documentation.
-    pub fn doc(&mut self, documentation: Vec<&str>) -> &mut Self {
-        self.documentation = documentation.iter().map(|doc| doc.to_string()).collect();
-        self
+    /// Creates a new unnamed field.
+    pub fn new_unnamed<T>(ty: T) -> Self
+    where
+        T: Into<Type>,
+    {
+        Self {
+            name: None,
+            ty: ty.into(),
+            docs: Docs::default(),
+            attrs: Attributes::default(),
+            vis: Vis::Private,
+        }
     }
 
-    /// Set field's annotation.
-    pub fn annotation(&mut self, annotation: Vec<&str>) -> &mut Self {
-        self.annotation = annotation.iter().map(|ann| ann.to_string()).collect();
-        self
+    /// Whether or not this field is a named field
+    pub fn is_named(&self) -> bool {
+        self.name.is_some()
     }
+
+    pub(crate) fn fmt_field(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        self.docs.fmt_docs(formatter)?;
+        self.attrs.fmt_attrs(formatter)?;
+
+        if let Some(name) = self.name.as_ref() {
+            write!(formatter, "{}: ", name)?;
+        }
+
+        self.ty.fmt(formatter)?;
+        write!(formatter, ",\n")
+    }
+
+    pub(crate) fn fmt_assoc_type_value(&self, formatter: &mut Formatter<'_>) -> fmt::Result {
+        let name = self.name.as_ref().expect("associated type must be named");
+        write!(formatter, "type {} = ", name)?;
+        self.ty.fmt(formatter)?;
+        write!(formatter, ";\n")
+    }
+
+    impl_attr_methods!(attrs);
+    impl_doc_methods!(docs);
+    impl_ty_methods!(field => ty);
+    impl_vis_methods!(field => vis);
 }

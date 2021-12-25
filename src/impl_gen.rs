@@ -1,11 +1,18 @@
 use std::fmt::{self, Write};
 
-use crate::bound::Bound;
+use crate::attributes::Attributes;
+use crate::bounds::Bounds;
 use crate::field::Field;
-use crate::formatter::{fmt_bounds, fmt_generics, Formatter};
+use crate::formatter::Formatter;
 use crate::function::Function;
+use crate::generics::Generics;
+use crate::type_def::Type;
 
-use crate::r#type::Type;
+use crate::impl_macros::{
+    impl_attr_methods,
+    impl_bounds_methods,
+    impl_generic_methods,
+};
 
 /// Defines an impl block.
 #[derive(Debug, Clone)]
@@ -14,7 +21,7 @@ pub struct Impl {
     target: Type,
 
     /// Impl level generics
-    generics: Vec<String>,
+    generics: Generics,
 
     /// If implementing a trait
     impl_trait: Option<Type>,
@@ -23,11 +30,11 @@ pub struct Impl {
     assoc_tys: Vec<Field>,
 
     /// Bounds
-    bounds: Vec<Bound>,
+    bounds: Bounds,
 
     fns: Vec<Function>,
 
-    macros: Vec<String>,
+    attrs: Attributes,
 }
 
 impl Impl {
@@ -38,21 +45,13 @@ impl Impl {
     {
         Impl {
             target: target.into(),
-            generics: vec![],
+            generics: Generics::default(),
             impl_trait: None,
             assoc_tys: vec![],
-            bounds: vec![],
+            bounds: Bounds::default(),
             fns: vec![],
-            macros: vec![],
+            attrs: Attributes::default(),
         }
-    }
-
-    /// Add a generic to the impl block.
-    ///
-    /// This adds the generic for the block (`impl<T>`) and not the target type.
-    pub fn generic(&mut self, name: &str) -> &mut Self {
-        self.generics.push(name.to_string());
-        self
     }
 
     /// Add a generic to the target type.
@@ -60,7 +59,7 @@ impl Impl {
     where
         T: Into<Type>,
     {
-        self.target.generic(ty);
+        self.target.push_generic(ty);
         self
     }
 
@@ -73,36 +72,13 @@ impl Impl {
         self
     }
 
-    /// Add a macro to the impl block (e.g. `"#[async_trait]"`)
-    pub fn r#macro(&mut self, r#macro: &str) -> &mut Self {
-        self.macros.push(r#macro.to_string());
-        self
-    }
-
     /// Set an associated type.
-    pub fn associate_type<T>(&mut self, name: &str, ty: T) -> &mut Self
+    pub fn associate_type<S, T>(&mut self, name: S, ty: T) -> &mut Self
     where
+        S: AsRef<str>,
         T: Into<Type>,
     {
-        self.assoc_tys.push(Field {
-            name: name.to_string(),
-            ty: ty.into(),
-            documentation: Vec::new(),
-            annotation: Vec::new(),
-        });
-
-        self
-    }
-
-    /// Add a `where` bound to the impl block.
-    pub fn bound<T>(&mut self, name: &str, ty: T) -> &mut Self
-    where
-        T: Into<Type>,
-    {
-        self.bounds.push(Bound {
-            name: name.to_string(),
-            bound: vec![ty.into()],
-        });
+        self.assoc_tys.push(Field::new_named(name, ty));
         self
     }
 
@@ -120,11 +96,10 @@ impl Impl {
 
     /// Formats the impl block using the given formatter.
     pub fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
-        for m in self.macros.iter() {
-            write!(fmt, "{}\n", m)?;
-        }
+        self.attrs.fmt_attrs(fmt)?;
+
         write!(fmt, "impl")?;
-        fmt_generics(&self.generics[..], fmt)?;
+        self.generics.fmt_generics(fmt)?;
 
         if let Some(ref t) = self.impl_trait {
             write!(fmt, " ")?;
@@ -135,15 +110,13 @@ impl Impl {
         write!(fmt, " ")?;
         self.target.fmt(fmt)?;
 
-        fmt_bounds(&self.bounds, fmt)?;
+        self.bounds.fmt_bounds(fmt)?;
 
         fmt.block(|fmt| {
             // format associated types
             if !self.assoc_tys.is_empty() {
                 for ty in &self.assoc_tys {
-                    write!(fmt, "type {} = ", ty.name)?;
-                    ty.ty.fmt(fmt)?;
-                    write!(fmt, ";\n")?;
+                    ty.fmt_assoc_type_value(fmt)?;
                 }
             }
 
@@ -158,4 +131,8 @@ impl Impl {
             Ok(())
         })
     }
+
+    impl_attr_methods!(attrs);
+    impl_bounds_methods!(bounds);
+    impl_generic_methods!(generics);
 }

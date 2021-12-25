@@ -2,29 +2,24 @@ use std::fmt::{self, Write};
 
 use indexmap::IndexMap;
 
-use crate::docs::Docs;
 use crate::formatter::Formatter;
 use crate::function::Function;
 use crate::import::Import;
 use crate::item::Item;
 use crate::module::Module;
 
-use crate::r#enum::Enum;
-use crate::r#impl::Impl;
-use crate::r#struct::Struct;
-use crate::r#trait::Trait;
+use crate::enum_gen::Enum;
+use crate::impl_gen::Impl;
+use crate::struct_gen::Struct;
+use crate::trait_gen::Trait;
 
 /// Defines a scope.
 ///
 /// A scope contains modules, types, etc...
 #[derive(Debug, Clone)]
 pub struct Scope {
-    /// Scope documentation
-    docs: Option<Docs>,
-
     /// Imports
     imports: IndexMap<String, IndexMap<String, Import>>,
-
     /// Contents of the documentation,
     items: Vec<Item>,
 }
@@ -33,7 +28,6 @@ impl Scope {
     /// Returns a new scope
     pub fn new() -> Self {
         Scope {
-            docs: None,
             imports: IndexMap::new(),
             items: vec![],
         }
@@ -66,7 +60,10 @@ impl Scope {
     /// will return the existing definition instead.
     ///
     /// [`get_or_new_module`]: #method.get_or_new_module
-    pub fn new_module(&mut self, name: &str) -> &mut Module {
+    pub fn new_module<S>(&mut self, name: S) -> &mut Module
+    where
+        S: AsRef<str>
+    {
         self.push_module(Module::new(name));
 
         match *self.items.last_mut().unwrap() {
@@ -76,39 +73,43 @@ impl Scope {
     }
 
     /// Returns a mutable reference to a module if it is exists in this scope.
-    pub fn get_module_mut<Q: ?Sized>(&mut self, name: &Q) -> Option<&mut Module>
+    pub fn get_module_mut<S>(&mut self, name: S) -> Option<&mut Module>
     where
-        String: PartialEq<Q>,
+        S: AsRef<str>,
     {
-        self.items
-            .iter_mut()
-            .filter_map(|item| match item {
-                &mut Item::Module(ref mut module) if module.name == *name => Some(module),
+        let name = name.as_ref();
+        self.items.iter_mut()
+            .find_map(|item| match item {
+                Item::Module(module) if module.name() == name => Some(module),
                 _ => None,
             })
-            .next()
     }
 
     /// Returns a mutable reference to a module if it is exists in this scope.
-    pub fn get_module<Q: ?Sized>(&self, name: &Q) -> Option<&Module>
+    pub fn get_module<'a, S>(&self, name: S) -> Option<&Module>
     where
-        String: PartialEq<Q>,
+        S: AsRef<str>
     {
-        self.items
-            .iter()
-            .filter_map(|item| match item {
-                &Item::Module(ref module) if module.name == *name => Some(module),
+        let name = name.as_ref();
+
+        self.items.iter()
+            .find_map(|item| match item {
+                Item::Module(module) if module.name() == name => Some(module),
                 _ => None,
             })
-            .next()
     }
 
     /// Returns a mutable reference to a module, creating it if it does
     /// not exist.
-    pub fn get_or_new_module(&mut self, name: &str) -> &mut Module {
+    pub fn get_or_new_module<S>(&mut self, name: S) -> &mut Module
+    where
+        S: AsRef<str>
+    {
+        let name = name.as_ref();
         if self.get_module(name).is_some() {
             self.get_module_mut(name).unwrap()
-        } else {
+        }
+        else {
             self.new_module(name)
         }
     }
@@ -126,7 +127,7 @@ impl Scope {
     ///
     /// [`get_or_new_module`]: #method.get_or_new_module
     pub fn push_module(&mut self, item: Module) -> &mut Self {
-        assert!(self.get_module(&item.name).is_none());
+        assert!(self.get_module(item.name()).is_none());
         self.items.push(Item::Module(item));
         self
     }
@@ -288,9 +289,7 @@ impl Scope {
                 }
 
                 if !tys.is_empty() {
-                    if let Some(ref vis) = *vis {
-                        write!(fmt, "{} ", vis)?;
-                    }
+                    vis.fmt(fmt)?;
 
                     write!(fmt, "use {}::", path)?;
 

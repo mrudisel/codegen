@@ -1,82 +1,99 @@
 use std::fmt::{self, Write};
 
+use crate::attributes::Attributes;
 use crate::block::Block;
 use crate::body::Body;
-use crate::bound::Bound;
+use crate::bounds::Bounds;
 use crate::docs::Docs;
 use crate::field::Field;
 use crate::formatter::Formatter;
-use crate::formatter::{fmt_bounds, fmt_generics};
+use crate::generics::Generics;
+use crate::type_def::Type;
+use crate::vis::Vis;
 
-use crate::r#type::Type;
+use crate::impl_macros::{
+    impl_attr_methods,
+    impl_bounds_methods,
+    impl_doc_methods,
+    impl_generic_methods,
+    impl_vis_methods,
+};
+
 
 /// Defines a function.
 #[derive(Debug, Clone)]
 pub struct Function {
     /// Name of the function
     name: String,
-
     /// Function documentation
-    docs: Option<Docs>,
-
+    docs: Docs,
     /// A lint attribute used to suppress a warning or error
     allow: Option<String>,
-
     /// Function visibility
-    vis: Option<String>,
-
+    vis: Vis,
     /// Function generics
-    generics: Vec<String>,
-
+    generics: Generics,
     /// If the function takes `&self` or `&mut self`
-    arg_self: Option<String>,
-
+    arg_self: Option<&'static str>,
     /// Function arguments
     args: Vec<Field>,
-
     /// Return type
     ret: Option<Type>,
-
     /// Where bounds
-    bounds: Vec<Bound>,
-
+    bounds: Bounds,
     /// Body contents
-    pub body: Option<Vec<Body>>,
-
+    body: Option<Vec<Body>>,
     /// Function attributes, e.g., `#[no_mangle]`.
-    attributes: Vec<String>,
-
+    attrs: Attributes,
     /// Function `extern` ABI
     extern_abi: Option<String>,
-
     /// Whether or not this function is `async` or not
-    r#async: bool,
+    is_async: bool,
 }
 
 impl Function {
-    /// Return a new function definition.
-    pub fn new(name: &str) -> Self {
-        Function {
-            name: name.to_string(),
-            docs: None,
+    /// Creates a new function definition for a trait.
+    pub fn new_trait_fn<S>(name: S) -> Self
+    where
+        S: AsRef<str>
+    {
+        Self {
+            name: name.as_ref().to_owned(),
+            docs: Docs::default(),
             allow: None,
-            vis: None,
-            generics: vec![],
+            vis: Vis::default(),
+            generics: Generics::default(),
             arg_self: None,
             args: vec![],
             ret: None,
-            bounds: vec![],
-            body: Some(vec![]),
-            attributes: vec![],
+            bounds: Bounds::default(),
+            body: None,
+            attrs: Attributes::default(),
             extern_abi: None,
-            r#async: false,
+            is_async: false,
         }
     }
 
-    /// Set the function documentation.
-    pub fn doc(&mut self, docs: &str) -> &mut Self {
-        self.docs = Some(Docs::new(docs));
-        self
+    /// Return a new function definition.
+    pub fn new<S>(name: S) -> Self
+    where
+        S: AsRef<str>
+    {
+        Function {
+            name: name.as_ref().to_owned(),
+            docs: Docs::default(),
+            allow: None,
+            vis: Vis::default(),
+            generics: Generics::default(),
+            arg_self: None,
+            args: vec![],
+            ret: None,
+            bounds: Bounds::default(),
+            body: Some(vec![]),
+            attrs: Attributes::default(),
+            extern_abi: None,
+            is_async: false,
+        }
     }
 
     /// Specify lint attribute to supress a warning or error.
@@ -85,57 +102,37 @@ impl Function {
         self
     }
 
-    /// Set the function visibility.
-    pub fn vis(&mut self, vis: &str) -> &mut Self {
-        self.vis = Some(vis.to_string());
-        self
-    }
-
     /// Set whether this function is async or not
-    pub fn set_async(&mut self, r#async: bool) -> &mut Self {
-        self.r#async = r#async;
-        self
-    }
-
-    /// Add a generic to the function.
-    pub fn generic(&mut self, name: &str) -> &mut Self {
-        self.generics.push(name.to_string());
+    pub fn set_async(&mut self, is_async: bool) -> &mut Self {
+        self.is_async = is_async;
         self
     }
 
     /// Add `self` as a function argument.
     pub fn arg_self(&mut self) -> &mut Self {
-        self.arg_self = Some("self".to_string());
+        self.arg_self = Some("self");
         self
     }
 
     /// Add `&self` as a function argument.
     pub fn arg_ref_self(&mut self) -> &mut Self {
-        self.arg_self = Some("&self".to_string());
+        self.arg_self = Some("&self");
         self
     }
 
     /// Add `&mut self` as a function argument.
     pub fn arg_mut_self(&mut self) -> &mut Self {
-        self.arg_self = Some("&mut self".to_string());
+        self.arg_self = Some("&mut self");
         self
     }
 
     /// Add a function argument.
-    pub fn arg<T>(&mut self, name: &str, ty: T) -> &mut Self
+    pub fn arg<S, T>(&mut self, name: S, ty: T) -> &mut Self
     where
+        S: AsRef<str>,
         T: Into<Type>,
     {
-        self.args.push(Field {
-            name: name.to_string(),
-            ty: ty.into(),
-            // While a `Field` is used here, both `documentation`
-            // and `annotation` does not make sense for function arguments.
-            // Simply use empty strings.
-            documentation: Vec::new(),
-            annotation: Vec::new(),
-        });
-
+        self.args.push(Field::new_named(name, ty));
         self
     }
 
@@ -145,18 +142,6 @@ impl Function {
         T: Into<Type>,
     {
         self.ret = Some(ty.into());
-        self
-    }
-
-    /// Add a `where` bound to the function.
-    pub fn bound<T>(&mut self, name: &str, ty: T) -> &mut Self
-    where
-        T: Into<Type>,
-    {
-        self.bounds.push(Bound {
-            name: name.to_string(),
-            bound: vec![ty.into()],
-        });
         self
     }
 
@@ -172,20 +157,6 @@ impl Function {
         self
     }
 
-    /// Add an attribute to the function.
-    ///
-    /// ```
-    /// use codegen::Function;
-    ///
-    /// let mut func = Function::new("test");
-    ///
-    /// // add a `#[test]` attribute
-    /// func.attr("test");
-    /// ```
-    pub fn attr(&mut self, attribute: &str) -> &mut Self {
-        self.attributes.push(attribute.to_string());
-        self
-    }
 
     /// Specify an `extern` ABI for the function.
     /// ```
@@ -210,39 +181,30 @@ impl Function {
 
     /// Formats the function using the given formatter.
     pub fn fmt(&self, is_trait: bool, fmt: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(ref docs) = self.docs {
-            docs.fmt(fmt)?;
-        }
+        self.docs.fmt_docs(fmt)?;
 
         if let Some(ref allow) = self.allow {
             write!(fmt, "#[allow({})]\n", allow)?;
         }
 
-        for attr in self.attributes.iter() {
-            write!(fmt, "#[{}]\n", attr)?;
-        }
+        self.attrs.fmt_attrs(fmt)?;
 
         if is_trait {
-            assert!(
-                self.vis.is_none(),
-                "trait fns do not have visibility modifiers"
-            );
+            assert!(self.vis == Vis::Private, "trait fns do not have visibility modifiers");
         }
 
-        if let Some(ref vis) = self.vis {
-            write!(fmt, "{} ", vis)?;
-        }
+        self.vis.fmt(fmt)?;
 
         if let Some(ref extern_abi) = self.extern_abi {
             write!(fmt, "extern \"{extern_abi}\" ", extern_abi = extern_abi)?;
         }
 
-        if self.r#async {
+        if self.is_async {
             write!(fmt, "async ")?;
         }
 
         write!(fmt, "fn {}", self.name)?;
-        fmt_generics(&self.generics, fmt)?;
+        self.generics.fmt_generics(fmt)?;
 
         write!(fmt, "(")?;
 
@@ -255,8 +217,7 @@ impl Function {
                 write!(fmt, ", ")?;
             }
 
-            write!(fmt, "{}: ", arg.name)?;
-            arg.ty.fmt(fmt)?;
+            arg.fmt_field(fmt)?;
         }
 
         write!(fmt, ")")?;
@@ -266,7 +227,7 @@ impl Function {
             ret.fmt(fmt)?;
         }
 
-        fmt_bounds(&self.bounds, fmt)?;
+        self.bounds.fmt_bounds(fmt)?;
 
         match self.body {
             Some(ref body) => fmt.block(|fmt| {
@@ -285,4 +246,10 @@ impl Function {
             }
         }
     }
+
+    impl_attr_methods!(attrs);
+    impl_bounds_methods!(bounds);
+    impl_doc_methods!(docs);
+    impl_generic_methods!(generics);
+    impl_vis_methods!(field => vis);
 }

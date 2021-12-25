@@ -1,12 +1,9 @@
 use std::fmt::{self, Write};
 
 use crate::associated_type::AssociatedType;
-use crate::bound::Bound;
-use crate::formatter::{fmt_bound_rhs, Formatter};
+use crate::formatter::Formatter;
 use crate::function::Function;
-use crate::type_def::TypeDef;
-
-use crate::r#type::Type;
+use crate::type_def::{Type, TypeDef, impl_type_def_passthrough};
 
 /// Define a trait.
 #[derive(Debug, Clone)]
@@ -15,51 +12,20 @@ pub struct Trait {
     parents: Vec<Type>,
     associated_tys: Vec<AssociatedType>,
     fns: Vec<Function>,
-    macros: Vec<String>,
 }
 
 impl Trait {
     /// Return a trait definition with the provided name
-    pub fn new(name: &str) -> Self {
+    pub fn new<S>(name: S) -> Self
+    where
+        S: AsRef<str>
+    {
         Trait {
             type_def: TypeDef::new(name),
             parents: vec![],
             associated_tys: vec![],
             fns: vec![],
-            macros: vec![],
         }
-    }
-
-    /// Returns a reference to the type
-    pub fn ty(&self) -> &Type {
-        &self.type_def.ty
-    }
-
-    /// Set the trait visibility.
-    pub fn vis(&mut self, vis: &str) -> &mut Self {
-        self.type_def.vis(vis);
-        self
-    }
-
-    /// Add a generic to the trait
-    pub fn generic(&mut self, name: &str) -> &mut Self {
-        self.type_def.ty.generic(name);
-        self
-    }
-
-    /// Add a `where` bound to the trait.
-    pub fn bound<T>(&mut self, name: &str, ty: T) -> &mut Self
-    where
-        T: Into<Type>,
-    {
-        self.type_def.bound(name, ty);
-        self
-    }
-
-    /// Add a macro to the trait def (e.g. `"#[async_trait]"`)
-    pub fn r#macro(&mut self, r#macro: &str) -> &mut Self {
-        self.type_def.r#macro(r#macro);
-        self
     }
 
     /// Add a parent trait.
@@ -71,29 +37,17 @@ impl Trait {
         self
     }
 
-    /// Set the trait documentation.
-    pub fn doc(&mut self, docs: &str) -> &mut Self {
-        self.type_def.doc(docs);
-        self
-    }
 
     /// Add an associated type. Returns a mutable reference to the new
     /// associated type for futher configuration.
     pub fn associated_type(&mut self, name: &str) -> &mut AssociatedType {
-        self.associated_tys.push(AssociatedType(Bound {
-            name: name.to_string(),
-            bound: vec![],
-        }));
-
+        self.associated_tys.push(AssociatedType::new(name));
         self.associated_tys.last_mut().unwrap()
     }
 
     /// Push a new function definition, returning a mutable reference to it.
     pub fn new_fn(&mut self, name: &str) -> &mut Function {
-        let mut func = Function::new(name);
-        func.body = None;
-
-        self.push_fn(func);
+        self.push_fn(Function::new_trait_fn(name));
         self.fns.last_mut().unwrap()
     }
 
@@ -112,17 +66,8 @@ impl Trait {
 
             // format associated types
             if !assoc.is_empty() {
-                for ty in assoc {
-                    let ty = &ty.0;
-
-                    write!(fmt, "type {}", ty.name)?;
-
-                    if !ty.bound.is_empty() {
-                        write!(fmt, ": ")?;
-                        fmt_bound_rhs(&ty.bound, fmt)?;
-                    }
-
-                    write!(fmt, ";\n")?;
+                for assoc_ty in assoc {
+                    assoc_ty.fmt_assoc_type(fmt)?;
                 }
             }
 
@@ -137,4 +82,6 @@ impl Trait {
             Ok(())
         })
     }
+
+    impl_type_def_passthrough!(type_def);
 }

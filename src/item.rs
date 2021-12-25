@@ -1,10 +1,9 @@
+use crate::enum_gen::Enum;
 use crate::function::Function;
+use crate::impl_gen::Impl;
 use crate::module::Module;
-
-use crate::r#enum::Enum;
-use crate::r#impl::Impl;
-use crate::r#struct::Struct;
-use crate::r#trait::Trait;
+use crate::struct_gen::Struct;
+use crate::trait_gen::Trait;
 
 #[derive(Debug, Clone)]
 pub enum Item {

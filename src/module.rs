@@ -1,39 +1,57 @@
 use std::fmt::{self, Write};
 
-use crate::docs::Docs;
+use crate::attributes::Attributes;
+use crate::docs::ModuleDocs;
 use crate::formatter::Formatter;
 use crate::function::Function;
 use crate::scope::Scope;
 
-use crate::r#enum::Enum;
-use crate::r#impl::Impl;
-use crate::r#struct::Struct;
-use crate::r#trait::Trait;
+use crate::vis::Vis;
+
+use crate::enum_gen::Enum;
+use crate::impl_gen::Impl;
+use crate::struct_gen::Struct;
+use crate::trait_gen::Trait;
+
+
+use crate::impl_macros::{
+    impl_attr_methods,
+    impl_doc_methods,
+    impl_vis_methods,
+};
+
 
 /// Defines a module.
 #[derive(Debug, Clone)]
 pub struct Module {
     /// Module name
-    pub name: String,
+    name: String,
 
     /// Visibility
-    vis: Option<String>,
+    vis: Vis,
 
     /// Module documentation
-    docs: Option<Docs>,
+    docs: ModuleDocs,
 
     /// Contents of the module
     scope: Scope,
+
+    /// attributes of the module. Useful for '#[cfg(test)]', etc.
+    attrs: Attributes,
 }
 
 impl Module {
     /// Return a new, blank module
-    pub fn new(name: &str) -> Self {
+    pub fn new<S>(name: S) -> Self
+    where
+        S: AsRef<str>
+    {
         Module {
-            name: name.to_string(),
-            vis: None,
-            docs: None,
+            name: name.as_ref().to_owned(),
+            vis: Vis::default(),
+            docs: ModuleDocs::default(),
             scope: Scope::new(),
+            attrs: Attributes::default(),
         }
     }
 
@@ -42,10 +60,9 @@ impl Module {
         &mut self.scope
     }
 
-    /// Set the module visibility.
-    pub fn vis(&mut self, vis: &str) -> &mut Self {
-        self.vis = Some(vis.to_string());
-        self
+    /// Returns the name of the module.
+    pub fn name(&self) -> &str {
+        self.name.as_str()
     }
 
     /// Import a type into the module's scope.
@@ -69,22 +86,25 @@ impl Module {
     /// will return the existing definition instead.
     ///
     /// [`get_or_new_module`]: #method.get_or_new_module
-    pub fn new_module(&mut self, name: &str) -> &mut Module {
+    pub fn new_module<S>(&mut self, name: S) -> &mut Module
+    where
+        S: AsRef<str>,
+    {
         self.scope.new_module(name)
     }
 
     /// Returns a reference to a module if it is exists in this scope.
-    pub fn get_module<Q: ?Sized>(&self, name: &Q) -> Option<&Module>
+    pub fn get_module<S>(&self, name: S) -> Option<&Module>
     where
-        String: PartialEq<Q>,
+        S: AsRef<str>,
     {
         self.scope.get_module(name)
     }
 
     /// Returns a mutable reference to a module if it is exists in this scope.
-    pub fn get_module_mut<Q: ?Sized>(&mut self, name: &Q) -> Option<&mut Module>
+    pub fn get_module_mut<S>(&mut self, name: S) -> Option<&mut Module>
     where
-        String: PartialEq<Q>,
+        S: AsRef<str>,
     {
         self.scope.get_module_mut(name)
     }
@@ -164,11 +184,13 @@ impl Module {
 
     /// Formats the module using the given formatter.
     pub fn fmt(&self, fmt: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(ref vis) = self.vis {
-            write!(fmt, "{} ", vis)?;
-        }
-
+        self.attrs.fmt_attrs(fmt)?;
+        self.vis.fmt(fmt)?;
         write!(fmt, "mod {}", self.name)?;
         fmt.block(|fmt| self.scope.fmt(fmt))
     }
+
+    impl_attr_methods!(attrs);
+    impl_doc_methods!(docs);
+    impl_vis_methods!(field => vis);
 }

@@ -1,8 +1,5 @@
 use std::fmt::{self, Write};
 
-use crate::bound::Bound;
-
-use crate::r#type::Type;
 
 const DEFAULT_INDENT: usize = 4;
 
@@ -97,54 +94,4 @@ impl<'a> fmt::Write for Formatter<'a> {
 
         Ok(())
     }
-}
-
-/// Format generics.
-pub fn fmt_generics(generics: &[String], fmt: &mut Formatter<'_>) -> fmt::Result {
-    if !generics.is_empty() {
-        write!(fmt, "<")?;
-
-        for (i, ty) in generics.iter().enumerate() {
-            if i != 0 {
-                write!(fmt, ", ")?
-            }
-            write!(fmt, "{}", ty)?;
-        }
-
-        write!(fmt, ">")?;
-    }
-
-    Ok(())
-}
-
-/// Format generic bounds.
-pub fn fmt_bounds(bounds: &[Bound], fmt: &mut Formatter<'_>) -> fmt::Result {
-    if !bounds.is_empty() {
-        write!(fmt, "\n")?;
-
-        // Write first bound
-        write!(fmt, "where {}: ", bounds[0].name)?;
-        fmt_bound_rhs(&bounds[0].bound, fmt)?;
-        write!(fmt, ",\n")?;
-
-        for bound in &bounds[1..] {
-            write!(fmt, "      {}: ", bound.name)?;
-            fmt_bound_rhs(&bound.bound, fmt)?;
-            write!(fmt, ",\n")?;
-        }
-    }
-
-    Ok(())
-}
-
-/// Format multiple generic bounds.
-pub fn fmt_bound_rhs(tys: &[Type], fmt: &mut Formatter<'_>) -> fmt::Result {
-    for (i, ty) in tys.iter().enumerate() {
-        if i != 0 {
-            write!(fmt, " + ")?
-        }
-        ty.fmt(fmt)?;
-    }
-
-    Ok(())
 }

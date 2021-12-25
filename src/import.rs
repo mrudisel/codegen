@@ -1,24 +1,28 @@
+use crate::vis::Vis;
+
+use crate::impl_macros::impl_vis_methods;
+
 /// Defines an import (`use` statement).
 #[derive(Debug, Clone)]
 pub struct Import {
     line: String,
 
     /// Function visibility
-    pub vis: Option<String>,
+    pub vis: Vis,
 }
 
 impl Import {
     /// Return a new import.
-    pub fn new(path: &str, ty: &str) -> Self {
+    pub fn new<S, T>(path: S, ty: T) -> Self
+    where
+        S: AsRef<str>,
+        T: AsRef<str>,
+    {
         Import {
-            line: format!("{}::{}", path, ty),
-            vis: None,
+            line: format!("{}::{}", path.as_ref(), ty.as_ref()),
+            vis: Vis::default(),
         }
     }
 
-    /// Set the import visibility.
-    pub fn vis(&mut self, vis: &str) -> &mut Self {
-        self.vis = Some(vis.to_string());
-        self
-    }
+    impl_vis_methods!(field => vis);
 }
